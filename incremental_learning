@@ -1,0 +1,72 @@
+import numpy as np
+import pandas as pd
+from sklearn.linear_model import SGDClassifier
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from scipy.stats import mode
+
+# Assuming your dataset is in a DataFrame named 'df'
+data = {
+    "fever": [102, 102],
+    "bodyPain": [0, 0],
+    "age": [9, 10],
+    "runnyNose": [0, 0],
+    "diffBreath": [-1, 0],
+    "infectionProb": [0, 1]
+}
+df = pd.DataFrame(data)
+
+# Define features and target
+X = df.drop('infectionProb', axis=1)
+y = df['infectionProb']
+
+# Split data for training and testing
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Standardize the features
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+# Initialize SGD classifiers for each feature subset
+model_sgd1 = SGDClassifier()
+model_sgd2 = SGDClassifier()
+model_sgd3 = SGDClassifier()
+
+# Define subsets of features for each distributed classifier
+x1 = X_train[:, [0, 1]]  # Subset: fever, bodyPain
+x2 = X_train[:, [2, 3]]  # Subset: age, runnyNose
+x3 = X_train[:, [4]]     # Subset: diffBreath
+
+X_test_1 = X_test[:, [0, 1]]
+X_test_2 = X_test[:, [2, 3]]
+X_test_3 = X_test[:, [4]]
+
+# Initialize classifiers with unique classes
+unique_classes = np.unique(y_train)
+model_sgd1.partial_fit(x1, y_train, classes=unique_classes)
+model_sgd2.partial_fit(x2, y_train, classes=unique_classes)
+model_sgd3.partial_fit(x3, y_train, classes=unique_classes)
+
+# Perform incremental learning in batches
+batch_size = 1  # Set small batch size due to small data example; adjust as needed
+for start in range(0, X_train.shape[0], batch_size):
+    end = start + batch_size
+    model_sgd1.partial_fit(x1[start:end], y_train[start:end])
+    model_sgd2.partial_fit(x2[start:end], y_train[start:end])
+    model_sgd3.partial_fit(x3[start:end], y_train[start:end])
+
+# Generate predictions from each model
+pred_sgd1 = model_sgd1.predict(X_test_1)
+pred_sgd2 = model_sgd2.predict(X_test_2)
+pred_sgd3 = model_sgd3.predict(X_test_3)
+
+# Combine predictions by taking the mode
+predictions = np.stack([pred_sgd1, pred_sgd2, pred_sgd3], axis=1)
+final_predictions, _ = mode(predictions, axis=1)
+final_predictions = final_predictions.ravel()
+
+# Evaluate accuracy
+print("Incremental SGD Distributed Model Accuracy:", accuracy_score(y_test, final_predictions))
+print(classification_report(y_test, final_predictions))
